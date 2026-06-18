@@ -44,8 +44,7 @@ def crop_image(
             Bounding box coordinates in `(x_min, y_min, x_max, y_max)` format.
 
     Returns:
-        Cropped image matching input
-            type.
+        Cropped image matching input type.
 
     Examples:
         ```pycon
@@ -101,8 +100,7 @@ def scale_image(image: ImageType, scale_factor: float) -> ImageType:
         scale_factor: Factor by which to scale the image.
 
     Returns:
-        Scaled image matching input
-            type.
+        Scaled image matching input type.
 
     Raises:
         ValueError: If scale factor is non-positive.
@@ -132,7 +130,8 @@ def scale_image(image: ImageType, scale_factor: float) -> ImageType:
 
     ![scale-image](https://media.roboflow.com/supervision-docs/supervision-docs-scale-image-2.png){ align=center width="1000" }
     """  # noqa E501 // docs
-    assert isinstance(image, np.ndarray)
+    if not isinstance(image, np.ndarray):
+        raise TypeError("image must be a numpy array")
     if scale_factor <= 0:
         raise ValueError("Scale factor must be positive.")
 
@@ -158,8 +157,7 @@ def resize_image(
             Defaults to `False`.
 
     Returns:
-        Resized image matching input
-            type.
+        Resized image matching input type.
 
     Examples:
         ```pycon
@@ -190,7 +188,8 @@ def resize_image(
 
     ![resize-image](https://media.roboflow.com/supervision-docs/supervision-docs-resize-image-2.png){ align=center width="1000" }
     """  # noqa E501 // docs
-    assert isinstance(image, np.ndarray)
+    if not isinstance(image, np.ndarray):
+        raise TypeError("image must be a numpy array")
     if keep_aspect_ratio:
         image_ratio = image.shape[1] / image.shape[0]
         target_ratio = resolution_wh[0] / resolution_wh[1]
@@ -252,7 +251,8 @@ def letterbox_image(
 
     ![letterbox-image](https://media.roboflow.com/supervision-docs/supervision-docs-letterbox-image-2.png){ align=center width="1000" }
     """  # noqa E501 // docs
-    assert isinstance(image, np.ndarray)
+    if not isinstance(image, np.ndarray):
+        raise TypeError("image must be a numpy array")
     color = unify_to_bgr(color=color)
     resized_image = resize_image(
         image=image, resolution_wh=resolution_wh, keep_aspect_ratio=True
@@ -368,8 +368,7 @@ def tint_image(
             Defaults to `0.5`.
 
     Returns:
-        Tinted image matching input
-            type.
+        Tinted image matching input type.
 
     Raises:
         ValueError: If opacity is outside range [0.0, 1.0].
@@ -389,7 +388,8 @@ def tint_image(
 
     ![tint-image](https://media.roboflow.com/supervision-docs/supervision-docs-tint-image-2.png){ align=center width="1000" }
     """  # noqa E501 // docs
-    assert isinstance(image, np.ndarray)
+    if not isinstance(image, np.ndarray):
+        raise TypeError("image must be a numpy array")
     if not 0.0 <= opacity <= 1.0:
         raise ValueError("opacity must be between 0.0 and 1.0")
 
@@ -407,8 +407,7 @@ def grayscale_image(image: ImageType) -> ImageType:
     all three channels for compatibility with color-based drawing helpers.
 
     Args:
-        image: The image to convert to
-            grayscale.
+        image: The image to convert to grayscale.
 
     Returns:
         3-channel grayscale image
@@ -489,8 +488,7 @@ class ImageSink:
         Initialize context manager for saving images to directory.
 
         Args:
-            target_dir_path: Target directory path where images will be
-                saved.
+            target_dir_path: Target directory path where images will be saved.
             overwrite: Whether to overwrite existing directory.
                 Defaults to `False`.
             image_name_pattern: File name pattern for saved images.
@@ -595,8 +593,7 @@ def create_tiles(
 
     Args:
         images: Images to create tiles. Elements can be either np.ndarray or
-            PIL.Image, and a common representation will be agreed by the
-            function.
+            PIL.Image, and a common representation will be agreed by the function.
         grid_size: Expected grid size in format (n_rows, n_cols). If not
             given, automated grid placement will be applied. One may also
             provide only one out of two elements of the tuple - then grid
@@ -744,11 +741,13 @@ def _establish_grid_size(
         return _negotiate_grid_size(images=images)
     if grid_size[0] is None:
         columns = grid_size[1]
-        assert columns is not None
+        if columns is None:
+            raise ValueError("columns cannot be None if size is None and grid is True")
         return math.ceil(len(images) / columns), columns
     if grid_size[1] is None:
         rows = grid_size[0]
-        assert rows is not None
+        if rows is None:
+            raise ValueError("rows cannot be None if size is None and grid is True")
         return rows, math.ceil(len(images) / rows)
     return cast(tuple[int, int], grid_size)
 
