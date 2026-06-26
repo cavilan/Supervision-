@@ -89,7 +89,7 @@ class _BaseLabelAnnotator(BaseAnnotator):
         color_lookup: The method used to determine the color of the label.
         text_color: The color to use for the label text.
         text_padding: The padding around the label text, in pixels.
-        text_anchor: The position of the text relative to the detection
+        text_position: The position of the text relative to the detection
             bounding box.
         text_offset: A tuple of 2D coordinates `(x, y)` to
             offset the text position from the anchor point, in pixels.
@@ -444,6 +444,8 @@ class MaskAnnotator(BaseAnnotator):
                 Options are `INDEX`, `CLASS`, `TRACK`.
         """
         self.color: Color | ColorPalette = _normalize_color_input(color)
+        if not 0.0 <= opacity <= 1.0:
+            raise ValueError("Opacity must be between 0.0 and 1.0")
         self.opacity = opacity
         self.color_lookup: ColorLookup = color_lookup
 
@@ -624,6 +626,8 @@ class ColorAnnotator(BaseAnnotator):
         """
         self.color: Color | ColorPalette = _normalize_color_input(color)
         self.color_lookup: ColorLookup = color_lookup
+        if not 0.0 <= opacity <= 1.0:
+            raise ValueError("Opacity must be between 0.0 and 1.0")
         self.opacity = opacity
 
     @ensure_cv2_image_for_class_method
@@ -722,6 +726,8 @@ class HaloAnnotator(BaseAnnotator):
                 Options are `INDEX`, `CLASS`, `TRACK`.
         """
         self.color: Color | ColorPalette = _normalize_color_input(color)
+        if not 0.0 <= opacity <= 1.0:
+            raise ValueError("Opacity must be between 0.0 and 1.0")
         self.opacity = opacity
         self.color_lookup: ColorLookup = color_lookup
         self.kernel_size: int = kernel_size
@@ -781,7 +787,8 @@ class HaloAnnotator(BaseAnnotator):
             self.color_lookup if custom_color_lookup is None else custom_color_lookup,
             collect_union=True,
         )
-        assert fmask is not None  # collect_union=True always returns an array
+        if fmask is None:
+            raise ValueError("fmask cannot be None when collect_union=True")
 
         colored_mask = cv2.blur(colored_mask, (self.kernel_size, self.kernel_size))
         colored_mask[fmask] = [0, 0, 0]
@@ -1392,11 +1399,12 @@ class LabelAnnotator(_BaseLabelAnnotator):
         detections: Detections,
         custom_color_lookup: npt.NDArray[np.int_] | None,
     ) -> None:
-        assert len(labels) == len(label_properties) == len(detections), (
-            f"Number of label properties ({len(label_properties)}), "
-            f"labels ({len(labels)}) and detections ({len(detections)}) "
-            "do not match."
-        )
+        if not (len(labels) == len(label_properties) == len(detections)):
+            raise ValueError(
+                f"Number of label properties ({len(label_properties)}), "
+                f"labels ({len(labels)}) and detections ({len(detections)}) "
+                "do not match."
+            )
 
         color_lookup = (
             custom_color_lookup
@@ -1616,7 +1624,8 @@ class RichLabelAnnotator(_BaseLabelAnnotator):
 
             ```
         """
-        assert isinstance(scene, Image.Image)
+        if not isinstance(scene, Image.Image):
+            raise TypeError("scene must be a PIL Image")
         _validate_labels(labels, detections)
 
         draw = ImageDraw.Draw(scene)
@@ -1706,11 +1715,12 @@ class RichLabelAnnotator(_BaseLabelAnnotator):
         detections: Detections,
         custom_color_lookup: npt.NDArray[np.int_] | None,
     ) -> None:
-        assert len(labels) == len(label_properties) == len(detections), (
-            f"Number of label properties ({len(label_properties)}), "
-            f"labels ({len(labels)}) and detections ({len(detections)}) "
-            "do not match."
-        )
+        if not (len(labels) == len(label_properties) == len(detections)):
+            raise ValueError(
+                f"Number of label properties ({len(label_properties)}), "
+                f"labels ({len(labels)}) and detections ({len(detections)}) "
+                "do not match."
+            )
         color_lookup = (
             custom_color_lookup
             if custom_color_lookup is not None
@@ -2688,7 +2698,8 @@ class PercentageBarAnnotator(BaseAnnotator):
             if custom_values is not None:
                 value = custom_values[detection_idx]
             else:
-                assert detections.confidence is not None  # MyPy type hint
+                if detections.confidence is None:
+                    raise ValueError("detections.confidence cannot be None")
                 value = detections.confidence[detection_idx]
 
             color = resolve_color(
@@ -3159,7 +3170,8 @@ class ComparisonAnnotator:
 
     @staticmethod
     def _use_obb(detections_1: Detections, detections_2: Detections) -> bool:
-        assert not detections_1.is_empty() or not detections_2.is_empty()
+        if detections_1.is_empty() and detections_2.is_empty():
+            raise ValueError("At least one of the detections must not be empty")
         is_obb_1 = ORIENTED_BOX_COORDINATES in detections_1.data
         is_obb_2 = ORIENTED_BOX_COORDINATES in detections_2.data
         return (
@@ -3170,7 +3182,8 @@ class ComparisonAnnotator:
 
     @staticmethod
     def _use_mask(detections_1: Detections, detections_2: Detections) -> bool:
-        assert not detections_1.is_empty() or not detections_2.is_empty()
+        if detections_1.is_empty() and detections_2.is_empty():
+            raise ValueError("At least one of the detections must not be empty")
         is_mask_1 = detections_1.mask is not None
         is_mask_2 = detections_2.mask is not None
         return (
@@ -3217,7 +3230,8 @@ class ComparisonAnnotator:
         mask = np.zeros(scene.shape[:2], dtype=np.bool_)
         if detections.is_empty():
             return mask
-        assert detections.mask is not None
+        if detections.mask is None:
+            raise ValueError("detections.mask cannot be None")
 
         for detections_mask in detections.mask:
             mask |= detections_mask.astype(np.bool_)
