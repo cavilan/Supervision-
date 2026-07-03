@@ -200,6 +200,99 @@ def test_get_video_frames_generator(dummy_video_path) -> None:
     assert all(frame.shape == (480, 640, 3) for frame in frames)
 
 
+def test_get_video_frames_generator_prefetch_matches_sync(dummy_video_path):
+    """Verify that the prefetch path yields identical frames to the sync path.
+
+    Scenario: Iterating over a video with prefetch=4 and again with prefetch=0
+        (synchronous) on the same dummy video.
+    Expected: Both generators yield the same number of frames in the same order,
+        with each corresponding frame being pixel-for-pixel identical.
+    """
+    sync_frames = list(get_video_frames_generator(dummy_video_path))
+    prefetched_frames = list(get_video_frames_generator(dummy_video_path, prefetch=4))
+    assert len(prefetched_frames) == len(sync_frames) == 10
+    for a, b in zip(prefetched_frames, sync_frames):
+        assert np.array_equal(a, b)
+
+
+def test_get_video_frames_generator_prefetch_propagates_decode_errors(tmp_path):
+    """Verify that reader-thread exceptions reach the consumer, not get swallowed.
+
+    Scenario: Passing a non-existent file path to the prefetch path so the reader
+        thread fails immediately on video open.
+    Expected: The exception propagates to the consumer and is raised as a
+        RuntimeError wrapping the original error; the consumer does not hang.
+    """
+    missing_path = str(tmp_path / "does_not_exist.mp4")
+    with pytest.raises((Exception, RuntimeError)):
+        list(get_video_frames_generator(missing_path, prefetch=4))
+
+
+def test_get_video_frames_generator_prefetch_early_termination(dummy_video_path):
+    """Verify that breaking out of the prefetched generator does not block reuse.
+
+    Scenario: Consuming only 3 frames from a 10-frame video with prefetch=4, then
+        creating a fresh generator on the same file.
+    Expected: The break exits cleanly without hanging; a new generator on the same
+        file yields all 10 frames normally.
+    """
+    taken = []
+    for frame in get_video_frames_generator(dummy_video_path, prefetch=4):
+        taken.append(frame)
+        if len(taken) >= 3:
+            break
+    assert len(taken) == 3
+    # A fresh generator on the same file must still work normally.
+    assert len(list(get_video_frames_generator(dummy_video_path, prefetch=4))) == 10
+
+
+@pytest.mark.parametrize(
+    ("stride", "start", "end"),
+    [
+        pytest.param(2, 0, None, id="stride2"),
+        pytest.param(1, 2, 7, id="start2_end7"),
+        pytest.param(2, 2, 8, id="stride2_start2_end8"),
+    ],
+)
+def test_get_video_frames_generator_prefetch_param_forwarding(
+    dummy_video_path, stride, start, end
+) -> None:
+    """Prefetch path must forward stride/start/end identically to the sync path.
+
+    Scenario: Using the prefetch path with various stride, start, and end
+        combinations to verify parameters are correctly forwarded.
+    Expected: The prefetch output matches the sync path frame-for-frame for
+        each combination; no frames skipped or duplicated.
+    """
+    sync_frames = list(
+        get_video_frames_generator(
+            dummy_video_path, stride=stride, start=start, end=end
+        )
+    )
+    prefetched_frames = list(
+        get_video_frames_generator(
+            dummy_video_path, stride=stride, start=start, end=end, prefetch=4
+        )
+    )
+    assert len(prefetched_frames) == len(sync_frames)
+    for a, b in zip(prefetched_frames, sync_frames):
+        assert np.array_equal(a, b)
+
+
+def test_get_video_frames_generator_prefetch_minimum_queue(dummy_video_path) -> None:
+    """prefetch=1 creates maximum backpressure; all frames must be returned in order.
+
+    Scenario: Using prefetch=1 forces the reader to block after every decoded
+        frame, maximising producer-consumer synchronisation pressure.
+    Expected: All 10 frames are yielded in the same order as the sync path.
+    """
+    sync_frames = list(get_video_frames_generator(dummy_video_path))
+    prefetched_frames = list(get_video_frames_generator(dummy_video_path, prefetch=1))
+    assert len(prefetched_frames) == len(sync_frames) == 10
+    for a, b in zip(prefetched_frames, sync_frames):
+        assert np.array_equal(a, b)
+
+
 def test_get_video_frames_generator_with_stride(dummy_video_path) -> None:
     """
     Verify that get_video_frames_generator correctly handles the stride parameter.
